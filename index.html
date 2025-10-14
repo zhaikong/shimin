@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>12345市民投诉 - 态势感知系统 (最终修复版)</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #051437;
+            --primary-glow: #25D5E4;
+            --secondary-glow: #E31937;
+            --border-color: rgba(37, 213, 228, 0.3);
+            --module-bg: rgba(5, 20, 55, 0.5);
+            --font-family-sans: 'Poppins', 'Noto Sans SC', sans-serif;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes ticker-scroll {
+            0% { transform: translateY(0); }
+            100% { transform: translateY(-100%); }
+        }
+        @keyframes slide-up {
+            0% { transform: translateY(100%); opacity: 0; }
+            5% { transform: translateY(0); opacity: 1; }
+            33% { transform: translateY(0); opacity: 1; }
+            38% { transform: translateY(-100%); opacity: 0; }
+            100% { transform: translateY(-100%); opacity: 0; }
+        }
+
+        body {
+            font-family: var(--font-family-sans);
+            background-color: var(--bg-color);
+            color: #fff;
+            background-image: url('data:image/svg+xml;utf8,<svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 0 L100 25 L100 75 L50 100 L0 75 L0 25 Z" fill="none" stroke="rgba(37, 213, 228, 0.05)" stroke-width="1"/></svg>');
+            background-size: 300px;
+            overflow: hidden;
+            animation: fadeIn 1s ease-in-out;
+        }
+
+        .module {
+            background-color: var(--module-bg);
+            border: 1px solid var(--border-color);
+            position: relative;
+            backdrop-filter: blur(5px);
+            padding: 1.5rem;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .module::before, .module::after {
+            content: '';
+            position: absolute;
+            width: 1.5rem;
+            height: 1.5rem;
+            border-color: var(--primary-glow);
+            border-style: solid;
+        }
+        .module::before { top: -2px; left: -2px; border-width: 2px 0 0 2px; }
+        .module::after { bottom: -2px; right: -2px; border-width: 0 2px 2px 0; }
+
+        .module-header {
+            font-size: 1.25rem;
+            font-weight: 500;
+            color: var(--primary-glow);
+            margin-bottom: 1rem;
+            padding-left: 0.75rem;
+            border-left: 3px solid var(--primary-glow);
+            flex-shrink: 0;
+        }
+
+        .module-body {
+            flex-grow: 1;
+            min-height: 0;
+        }
+
+        .filter-btn {
+            background-color: rgba(37, 213, 228, 0.1);
+            border: 1px solid var(--border-color);
+            color: var(--primary-glow);
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .filter-btn:hover, .filter-btn.active {
+            background-color: var(--primary-glow);
+            color: var(--bg-color);
+            box-shadow: 0 0 15px var(--primary-glow);
+        }
+
+        .metrics-carousel {
+            position: relative;
+            height: 100%;
+            overflow-y: auto;
+            scroll-behavior: smooth;
+            scrollbar-width: none; /* Firefox */
+        }
+        
+        .metrics-carousel::-webkit-scrollbar {
+            display: none; /* Chrome, Safari, Edge */
+        }
+        
+        .metric-slide {
+            height: 100%;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            scroll-snap-align: start;
+        }
+        
+        .metric-value {
+            font-size: 6rem; /* 增大字体大小 */
+            font-weight: 700;
+            font-family: 'Poppins', sans-serif;
+            color: var(--secondary-glow);
+            text-shadow: 0 0 20px var(--secondary-glow); /* 增强发光效果 */
+            margin-bottom: 0.5rem;
+            line-height: 1;
+        }
+        
+        .metric-label {
+            font-size: 1.5rem;
+            color: #ffffff;
+            opacity: 0.8;
+        }
+        
+        .live-ticker .ticker-item {
+            padding: 0.75rem 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    </style>
+</head>
+<body class="p-4">
+
+    <main class="w-full h-[calc(100vh-2rem)] grid grid-cols-12 grid-rows-12 gap-4">
+
+        <header class="col-span-12 row-span-1 flex justify-between items-center">
+            <h1 class="text-3xl font-bold text-shadow-lg" style="text-shadow: 0 0 10px var(--primary-glow);">12345市民投诉 - 态势感知系统</h1>
+            <div id="time-filters" class="flex space-x-2">
+                <button class="filter-btn active">24小时</button>
+                <button class="filter-btn">72小时</button>
+                <button class="filter-btn">7天</button>
+            </div>
+        </header>
+
+        <div class="col-span-3 row-span-11 grid grid-rows-3 gap-4">
+            <div class="module row-span-1">
+                <h2 class="module-header">核心指标</h2>
+                <div class="module-body text-center">
+                    <div id="metrics-carousel" class="metrics-carousel">
+                        <div class="metric-slide">
+                            <p id="total-complaints" class="metric-value">2,161</p>
+                            <p class="metric-label">总投诉量 (件)</p>
+                        </div>
+                        <div class="metric-slide">
+                            <p id="daily-avg" class="metric-value">67.5</p>
+                            <p class="metric-label">平均每日 (件)</p>
+                        </div>
+                        <div class="metric-slide">
+                            <p id="timespan" class="metric-value">32</p>
+                            <p class="metric-label">时间跨度 (天)</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="module row-span-2">
+                <h2 class="module-header">高频热点问题</h2>
+                 <ul id="hotspot-list" class="space-y-4 text-lg h-full overflow-y-auto">
+                    <li class="flex justify-between items-baseline"><span><span class="font-bold text-cyan-300">1.</span> 小区管理问题</span> <span class="font-bold text-red-500">833</span></li>
+                    <li class="flex justify-between items-baseline"><span><span class="font-bold text-cyan-300">2.</span> 欠薪问题</span> <span class="font-bold text-red-500">550</span></li>
+                    <li class="flex justify-between items-baseline"><span><span class="font-bold text-cyan-300">3.</span> 道路问题</span> <span class="font-bold text-red-500">524</span></li>
+                    <li class="flex justify-between items-baseline"><span><span class="font-bold text-cyan-300">4.</span> 噪音扰民</span> <span class="font-bold text-red-500">375</span></li>
+                    <li class="flex justify-between items-baseline"><span><span class="font-bold text-cyan-300">5.</span> 安全隐患</span> <span class="font-bold text-red-500">342</span></li>
+                 </ul>
+            </div>
+        </div>
+
+        <div class="col-span-6 row-span-11 grid grid-rows-2 gap-4">
+            <div class="module row-span-1">
+                <h2 class="module-header">诉求类型分布 | <span class="text-sm text-white">互动区：点击饼图查看详情</span></h2>
+                <div class="module-body grid grid-cols-3 gap-4">
+                    <div id="typeChart" class="col-span-2 h-full"></div>
+                    <div id="chart-interaction-panel" class="col-span-1 flex flex-col justify-center items-center text-center p-4 bg-black/20 rounded-lg">
+                        <p class="text-lg text-gray-300">当前选择</p>
+                        <p id="selected-type-name" class="text-3xl font-bold text-cyan-300 mt-2">-</p>
+                        <p id="selected-type-value" class="text-5xl font-bold text-white mt-4">-</p>
+                        <p class="text-lg text-gray-300 mt-1">件</p>
+                    </div>
+                </div>
+            </div>
+            <div class="module row-span-1">
+                <h2 id="hourly-chart-title" class="module-header">投诉时段分布 (高峰: 17:00)</h2>
+                <div id="hourlyChart" class="w-full module-body"></div>
+            </div>
+        </div>
+        
+        <div class="col-span-3 row-span-11 grid grid-rows-3 gap-4">
+            <div class="module row-span-1">
+                <h2 class="module-header">紧急程度分析</h2>
+                <div id="urgency-panel" class="module-body flex justify-around items-center text-center">
+                    <div>
+                        <p class="text-4xl font-bold text-cyan-300">93.1%</p>
+                        <p class="text-gray-400 mt-2">一般工单 (2,012)</p>
+                    </div>
+                     <div>
+                        <p class="text-4xl font-bold text-red-500">6.9%</p>
+                        <p class="text-gray-400 mt-2">紧急工单 (149)</p>
+                    </div>
+                </div>
+            </div>
+            <div class="module row-span-2 overflow-hidden">
+                <h2 class="module-header">最新工单动态</h2>
+                <div class="module-body relative">
+                    <div class="live-ticker absolute inset-0">
+                        </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+    
+    <script>
+        // --- SCRIPT START ---
+
+        // DATA SOURCE FOR LIVE TICKER (from 月.json)
+        const liveDataJson = {
+          "Sheet1": [
+            { "诉求标题": "反映同心县中国移动退费问题", "诉求类型": "求助", "交办时间": "2025-10-13 16:23:05" },
+            { "诉求标题": "反映同心县豫海镇城北村水坑存在安全隐患问题", "诉求类型": "求助", "交办时间": "2025-10-13 16:22:08" },
+            { "诉求标题": "反映同心县火车站附近施工噪音扰民的问题", "诉求类型": "求助", "交办时间": "2025-10-13 16:08:45" },
+            { "诉求标题": "反映同心县河西镇同德村村民申请四胎育儿补贴未通过的问题", "诉求类型": "求助", "交办时间": "2025-10-13 16:06:29" },
+            { "诉求标题": "反映同心县信泰家园小区水费异常的问题", "诉求类型": "求助", "交办时间": "2025-10-13 15:55:36" },
+            { "诉求标题": "反映同心县韦州镇马庄村沟渠堆满垃圾问题", "诉求类型": "求助", "交办时间": "2025-10-13 15:51:21" },
+            { "诉求标题": "反映同心县团结北街体育广场周边栏杆影响住户车辆停放问题", "诉求类型": "求助", "交办时间": "2025-10-13 15:48:57" },
+            { "诉求标题": "投诉同心县碧桂圆商网处暖气频繁损坏无法正常通暖问题", "诉求类型": "投诉", "交办时间": "2025-10-13 15:45:37" },
+            { "诉求标题": "反映同心县政务服务中心54号窗口工作人员使用市民身份证查询他人信息的问题", "诉求类型": "求助", "交办时间": "2025-10-13 15:44:36" },
+            { "诉求标题": "举报同心县“信泰达桌球俱乐部”允许未成年进入的问题", "诉求类型": "举报", "交办时间": "2025-10-13 15:42:34" },
+            { "诉求标题": "投诉同心县新区家园A区上一任住户暖气费未缴清问题", "诉求类型": "投诉", "交办时间": "2025-10-13 15:41:52" },
+            { "诉求标题": "反映同心县信泰家园小区水费异常的问题", "诉求类型": "求助", "交办时间": "2025-10-13 15:30:10" },
+            { "诉求标题": "投诉同心县自来水公司要求市民缴纳上一个住户产生水费问题", "诉求类型": "投诉", "交办时间": "2025-10-13 15:27:51" },
+            { "诉求标题": "投诉同心县“宁夏德晖新能源科技发展有限公司”拖欠工资问题", "诉求类型": "投诉", "交办时间": "2025-10-13 15:19:19" },
+            { "诉求标题": "反映同心县丁塘镇湾段头村水费异常的问题", "诉求类型": "求助", "紧急程度": "紧急", "交办时间": "2025-10-13 15:17:59" }
+          ]
+        };
+        
+        // Main function to initialize the dashboard
+        function initializeDashboard() {
+            
+            // --- 1. INTERACTIVITY: Animated Counters ---
+            function animateValue(obj, start, end, duration) {
+                if (!obj) return;
+                let startTimestamp = null;
+                const step = (timestamp) => {
+                    if (!startTimestamp) startTimestamp = timestamp;
+                    const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                    obj.innerHTML = Math.floor(progress * (end - start) + start).toLocaleString();
+                    if (progress < 1) window.requestAnimationFrame(step);
+                };
+                window.requestAnimationFrame(step);
+            }
+            function animateDecimalValue(obj, start, end, duration) {
+                if (!obj) return;
+                let startTimestamp = null;
+                const step = (timestamp) => {
+                    if (!startTimestamp) startTimestamp = timestamp;
+                    const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+                    obj.innerHTML = (progress * (end - start) + start).toFixed(1);
+                    if (progress < 1) window.requestAnimationFrame(step);
+                };
+                window.requestAnimationFrame(step);
+            }
+
+            // Using static data from the main report summary
+            animateValue(document.getElementById('total-complaints'), 0, 2161, 1500);
+            animateDecimalValue(document.getElementById('daily-avg'), 0, 67.5, 1500);
+            animateValue(document.getElementById('timespan'), 0, 32, 1500);
+            
+            // --- 1.5. NEW: Auto-scroll for Core Metrics ---
+            const metricsCarousel = document.getElementById('metrics-carousel');
+            if (metricsCarousel) {
+                const slides = metricsCarousel.querySelectorAll('.metric-slide');
+                if (slides.length > 1) {
+                    let currentSlide = 0;
+                    setInterval(() => {
+                        currentSlide = (currentSlide + 1) % slides.length;
+                        // Use scrollTo for smooth transition
+                        metricsCarousel.scrollTo({
+                            top: slides[currentSlide].offsetTop,
+                            behavior: 'smooth'
+                        });
+                    }, 4000); // Change slide every 4 seconds
+                }
+            }
+            
+            // 添加滚动捕获样式
+            document.getElementById('metrics-carousel').style.scrollSnapType = 'y mandatory';
+
+            // --- 2. INTERACTIVITY: Filter Buttons ---
+            const filterButtons = document.querySelectorAll('#time-filters .filter-btn');
+            filterButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    filterButtons.forEach(btn => btn.classList.remove('active'));
+                    button.classList.add('active');
+                });
+            });
+
+            // --- 3. INTERACTIVITY: Live Ticker ---
+            const tickerContainer = document.querySelector('.live-ticker');
+            if (tickerContainer && liveDataJson && liveDataJson.Sheet1) {
+                const liveRecords = liveDataJson.Sheet1;
+                let tickerHTML = '';
+                for (let i = 0; i < 3; i++) { // duplicate for smooth scroll
+                     liveRecords.forEach(r => {
+                        const timeDiff = Math.floor((new Date("2025-10-14T09:00:00Z") - new Date(r['交办时间'])) / (1000 * 60));
+                        const timeAgo = timeDiff > 60 ? `${Math.floor(timeDiff/60)}小时前` : `${timeDiff}分钟前`;
+                        tickerHTML += `<div class="ticker-item flex justify-between">
+                                        <span class="text-cyan-300">[${r['诉求类型']}]</span>
+                                        <span class="flex-1 mx-2">${r['诉求标题']}</span>
+                                        <span class="text-gray-500">${timeAgo}</span>
+                                    </div>`;
+                    });
+                }
+                tickerContainer.innerHTML = tickerHTML;
+                const totalHeight = tickerContainer.scrollHeight / 3;
+                tickerContainer.style.animation = `ticker-scroll ${totalHeight / 35}s linear infinite`;
+            }
+
+            // --- 4. ECHARTS INITIALIZATION ---
+            const commonOptions = {
+                textStyle: { fontFamily: 'Poppins, Noto Sans SC', color: '#fff' },
+                grid: { left: '3%', right: '4%', bottom: '5%', top: '15%', containLabel: true },
+                backgroundColor: 'transparent'
+            };
+
+            // Hourly Chart
+            const hourlyChartDom = document.getElementById('hourlyChart');
+            let hourlyChart;
+            if (hourlyChartDom) {
+                hourlyChart = echarts.init(hourlyChartDom);
+                const hourlyOption = {
+                    ...commonOptions,
+                    tooltip: { trigger: 'axis', backgroundColor: 'rgba(5, 20, 55, 0.8)', borderColor: 'var(--border-color)' },
+                    xAxis: {
+                        type: 'category',
+                        data: ['0h', '...','14h', '15h', '16h', '17h', '18h', '19h', '...', '23h'],
+                        axisLine: { lineStyle: { color: 'var(--border-color)' } },
+                        axisLabel: { color: '#ccc' }
+                    },
+                    yAxis: {
+                        type: 'value',
+                        axisLine: { show: true, lineStyle: { color: 'var(--border-color)' } },
+                        splitLine: { lineStyle: { color: 'rgba(37, 213, 228, 0.1)' } },
+                        axisLabel: { color: '#ccc' }
+                    },
+                    series: [{
+                        name: '投诉量', type: 'bar', 
+                        data: [50, 80, 150, 250, 350, 375, 300, 180, 90, 40], // Simulated data to match the report's peak
+                        itemStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: 'rgba(37, 213, 228, 0.8)' },
+                                { offset: 1, color: 'rgba(37, 213, 228, 0.1)' }
+                            ]),
+                            borderRadius: [2, 2, 0, 0],
+                        },
+                        emphasis: { focus: 'series', itemStyle: { color: 'var(--primary-glow)', shadowColor: 'var(--primary-glow)', shadowBlur: 10 } }
+                    }]
+                };
+                hourlyChart.setOption(hourlyOption);
+            }
+            
+            // Type Chart
+            const typeChartDom = document.getElementById('typeChart');
+            let typeChart;
+            if (typeChartDom) {
+                typeChart = echarts.init(typeChartDom);
+                const typeData = [
+                    { value: 1447, name: '求助' }, { value: 570, name: '投诉' }, { value: 81, name: '举报' },
+                    { value: 37, name: '建议' }, { value: 22, name: '咨询' }, { value: 4, name: '表扬' }
+                ];
+                const typeOption = {
+                    ...commonOptions,
+                    tooltip: { trigger: 'item', formatter: '{b}: {c}件 ({d}%)' },
+                    legend: { show: false },
+                    series: [{
+                        name: '诉求类型', type: 'pie', radius: ['60%', '80%'], center: ['50%', '50%'],
+                        avoidLabelOverlap: false,
+                        itemStyle: { borderRadius: 5, borderColor: 'var(--bg-color)', borderWidth: 4 },
+                        label: { show: false }, emphasis: { scaleSize: 10 }, data: typeData,
+                    }],
+                    color: ['#E31937', '#25D5E4', '#1E90FF', '#FFD700', '#9370DB', '#32CD32']
+                };
+                typeChart.setOption(typeOption);
+
+                const interactionName = document.getElementById('selected-type-name');
+                const interactionValue = document.getElementById('selected-type-value');
+                typeChart.on('click', function (params) {
+                    interactionName.innerText = params.data.name;
+                    interactionValue.innerText = params.data.value.toLocaleString();
+                });
+                if (typeData.length > 0) {
+                     const initialData = typeData.sort((a,b) => b.value - a.value)[0];
+                     interactionName.innerText = initialData.name;
+                     interactionValue.innerText = initialData.value.toLocaleString();
+                }
+            }
+
+            // --- 5. Window Resize Handler ---
+            window.addEventListener('resize', () => {
+                if(hourlyChart) { hourlyChart.resize(); }
+                if(typeChart) { typeChart.resize(); }
+            });
+        }
+
+        // Robust way to run the script after the page is fully loaded.
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeDashboard);
+        } else {
+            initializeDashboard();
+        }
+
+    </script>
+</body>
+</html>
